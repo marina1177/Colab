@@ -73,10 +73,26 @@ ws.iter_rows(min_row=1,min_col=1,max_col=ws.max_column))]
 print(header)
 mandata={}
 
-for row in ws.iter_rows(min_row=1,min_col=1,max_row=ws.max_row,max_col=ws.max_column):
+for row in ws.iter_rows(min_row=2,min_col=1,max_row=ws.max_row,max_col=ws.max_column):
 	if len(row)>0:
+		freq = row[1].value
+		if freq is not None:
+			data = [cell.value for cell in row]
+			#print(data)
+			if freq not in mandata:
+				mandata[freq] = []
+			mandata[freq].append(data)
 
 
+ampl= lambda data:data[4]
+
+for freq in mandata:
+	print(f'Generator{freq}, number str: {len(mandata[freq])}')
+	print(mandata[freq])
+	mandata[freq].sort(key=ampl, reverse=True)
+	print(mandata[freq])
+
+	
 '''movies = pd.read_excel(file)
 print(movies.head())
 #sorted_tab = movies.sort_values(by=['freq[kHz]', 'deep', 'def_disp[mm]'], ascending=True)
