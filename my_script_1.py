@@ -28,28 +28,31 @@ test_files = ['test_deep100.xlsx', 'test_deep80.xlsx', 'test_deep50.xlsx' ]
 dir = './rect'
 normdir = './norm'
 
+
 class Calibrate100(object):
 	def __init__(self, z=0+0j, freq=0, norm=0+0j):
 		self.freq = freq
 		self.norm = norm  # на это буду домножать каждый сигнал этой частоты
 		self.phase = math.degrees(cmath.phase(z))
+		self.amp = abs(z)
+#нормированная разность фаз для каждой частоты
+		self.dphase = [] #80/50/20/15
+		self.damp = []  #80/50/20/15
 
-	#нормированная разность фаз для каждой частоты
 		self.dphase15=0
 		self.dphase20=0
 		self.dphase50=0
 		self.dphase80=0
 
-class Cracks(object):
-	def __init__(self,type=None, lengh=0, width=0, deep=0, freq=0):
-		self.type=type
-		self.l = lengh
-		self.w=width
-		self.deep =deep
-		self.freq = freq
 
-		self.im_cmpl = 1
-		self.re_cmpl = 1
+class Cracks(object):
+	def __init__(self, zmax=0+0j, crack_type=None,  crack_len=0, crack_w=0, deep=0, freq=0):
+		self.type = crack_type
+		self.len = crack_len
+		self.w = crack_w
+		self.deep = deep
+		self.freq = freq
+		self.phase = math.degrees(cmath.phase(zmax))
 
 def fun(x):
 	return [x[0]**2 + x[1]**2 - 100.0,
@@ -72,28 +75,68 @@ def normalize(z):
 	return(norm)
 
 
-#def main():
-
-file_path = join(dir, test_files[0])
-wb = load_workbook(filename=file_path, data_only=True, read_only=True)
-wsn = list(wb.sheetnames)
-
-wsdata=None
-for i in wsn:
-	if wb[i]['B1'].value == 'freq[kHz]':
-		wsdata=i
-if wsdata==None:
-	print("Error")
-
-ws = wb[wsdata]
-
-print(ws['B1'].value)
-header = [cell.value for cell in next(
-		ws.iter_rows(min_row=1, min_col=1, max_col=ws.max_column))]
-print(header)
+def fill_dict(ws, start_row):
+	mandata = {}
+	for row in ws.iter_rows(min_row=start_row, min_col=1, max_row=ws.max_row, max_col=ws.max_column):
+		if len(row) > 0:
+			freq = row[1].value
+			if freq is not None:
+				data = [cell.value for cell in row]
+				#print(data)
+				if freq not in mandata:
+					mandata[freq] = []
+				mandata[freq].append(data)
+	return (mandata)
 
 
-wb.close
+def fill_refdata(mandata):
+	# lambda-функции для сортировки по ключу
+	ampl = lambda data: data[4]
+	def_disp = lambda data: data[0]
+
+	Calibrate_Curve = []
+	for freq in mandata:
+		#print(f'Key-frequency {freq}, number str: {len(mandata[freq])}')
+		# sorting by Amplitude[V](maxZ)
+		mandata[freq].sort(key=ampl, reverse=True)
+
+		# complex number formation for turning
+		z = complex(mandata[freq][0][3], mandata[freq][0][2])
+		#print(f'original_z = {z}')
+		norm = normalize(z)
+		print(f'freq = {freq},norm = {norm}')
+		clbrt_data = Calibrate100(complex((z * norm).real, (z * norm).imag),
+		                          int(mandata[freq][0][1]), norm)
+		Calibrate_Curve.append(clbrt_data)
+		for row in mandata[freq]:
+			z = complex(row[3], row[2])
+			row[3] = (z * norm).real
+			row[2] = (z * norm).imag
+			row[4] = abs(z * norm)
+
+		# sorting by def_disp[mm]
+		mandata[freq].sort(key=def_disp, reverse=False)
+		#print(mandata[freq])
+		print('*******\n')
+	return Calibrate_Curve
+
+def main():
+
+	file_path = join(dir, test_files[0])
+	wb = load_workbook(filename=file_path, data_only=True, read_only=True)
+	wsn = list(wb.sheetnames)
+	ws = wb.active
+	"""wsdata=None
+	for i in wsn:
+		if wb[i]['B1'].value == 'freq[kHz]':
+			wsdata=i
+	if wsdata==None:
+		print("Error")"""
+	header = [cell.value for cell in next(
+			ws.iter_rows(min_row=1, min_col=1, max_col=ws.max_column))]
+	print(header)
+	wb.close
+
 
 # обработка сигнала от сквозного отверстия:
 # получение нормировочного коэффициента для каждой частоты
@@ -105,63 +148,73 @@ wb.close
 # '100': [[row[0]],[row[1]],..,[row[len(mandata[freq])]]],
 # '200': [[row[0]],[row[1]],..,[row[len(mandata[freq])]]]
 # }
-mandata={}
-for row in ws.iter_rows(min_row=2, min_col=1, max_row=ws.max_row, max_col=ws.max_column):
-	if len(row)>0:
-		freq = row[1].value
-		if freq is not None:
-			data = [cell.value for cell in row]
-			#print(data)
-			if freq not in mandata:
-				mandata[freq] = []
-			mandata[freq].append(data)
+	mandata= fill_dict(ws, start_row=2)
+	Calibrate_Curve = fill_refdata(mandata)
 
-#lambda-функции для сортировки по ключу
-ampl= lambda data:data[4]
-def_disp= lambda data:data[0]
+	# создание файлов нормированных калибровочных сквозных сигналов
+	for freq in mandata:
+		exname = 'test_deep100_' + str(int(freq)) + 'kHz_norm.xlsx'
+		file_path = join(normdir, exname)
+		wb = Workbook()
+		ws = wb.active
+		ws.append(header)
+		for row in mandata[freq]:
+			ws.append(row)
+	#выравнивание колонок:
+		for i in range(1, 4):
+			zagl = ws.cell(row = 1, column=i)
+			zagl.alignment = Alignment(horizontal='center')
+		wb.save(file_path)
+#*************************************************************
 
-Calibrate_Curve = []
-for freq in mandata:
-	print(f'Key-frequency {freq}, number str: {len(mandata[freq])}')
+	for i in range(1, len(test_files)):
+		file_path = join(dir, test_files[i])
+		print(file_path)
+		wb = load_workbook(filename=file_path, data_only=True, read_only=True)
+		ws = wb.active
+		header = [cell.value for cell in next(
+			ws.iter_rows(min_row=1, min_col=1, max_col=ws.max_column))]
+		print(header)
+		wb.close
+		dict=fill_dict(ws=ws, start_row=2)
 
-	#sorting by Amplitude[V](maxZ)
-	mandata[freq].sort(key=ampl, reverse=True)
+		ampl = lambda data: data[4]
+		def_disp = lambda data: data[0]
 
-	#complex number formation for turning
-	z = complex(mandata[freq][0][3], mandata[freq][0][2])
-	print(f'original_z = {z}')
-	norm = normalize(z)
-	clbrt_data = Calibrate100(complex((z*norm).real, (z*norm).imag),
-	                          int(mandata[freq][0][1]), norm)
-	Calibrate_Curve.append(clbrt_data)
+		#sort_test(dict, Calibrate_Curve)
 
-	for row in mandata[freq]:
-		z = complex(row[3], row[2])
-		row[3] = (z*norm).real
-		row[2] = (z*norm).imag
-		row[4] = abs(z*norm)
+		for freq in dict:
+			for n in range(0, len(Calibrate_Curve)):
+				if Calibrate_Curve[n].freq == freq:
+					norm = Calibrate_Curve[n].norm
+			print(f'n = {n}, freq = {freq}, norm = {norm}')
 
-	# sorting by def_disp[mm]
-	mandata[freq].sort(key=def_disp, reverse=False)
-	print(mandata[freq])
+			for row in dict[freq]:
+				z = complex(row[3], row[2])
+				row[3] = (z * norm).real
+				row[2] = (z * norm).imag
+				row[4] = abs(z * norm)
 
-print('*******\n')
+			# sorting by Amplitude[V](maxZ)
+			dict[freq].sort(key=ampl, reverse=True)
 
-# создание файлов нормированных калибровочных сквозных сигналов
-for freq in mandata:
-	exname = 'test_deep100_' + str(int(freq)) + 'kHz_norm.xlsx'
-	file_path = join(normdir, exname)
-	wb = Workbook()
-	ws = wb.active
+			z = complex(dict[freq][0][3], dict[freq][0][2])
+			for n in range(0, len(Calibrate_Curve)):
+				if Calibrate_Curve[n].freq == freq:
+					print(f'n = {n}, i = {i}')
+					Calibrate_Curve[n].dphase.append(math.degrees(cmath.phase(z)) - Calibrate_Curve[n].phase)
+					Calibrate_Curve[n].damp.append(Calibrate_Curve[n].amp / abs(z))
+					print(f'Phase = {math.degrees(cmath.phase(z))}, dphase = {Calibrate_Curve[n].dphase[i-1]}')
+					print(f'Amp = {abs(z)}, damp = {Calibrate_Curve[n].damp[i - 1]}')
 
-	ws.append(header)
-	for row in mandata[freq]:
-		ws.append(row)
-#выравнивание колонок:
-	for i in range(1, 4):
-		zagl = ws.cell(row = 1, column=i)
-		zagl.alignment = Alignment(horizontal='center')
-	wb.save(file_path)
+			# sorting by def_disp[mm]
+			dict[freq].sort(key=def_disp, reverse=False)
+			print(dict[freq])
+			print('*******\n')
+	print('Marina very clever!\n')
+
+if __name__ == "__main__":
+	main()
 
 '''movies = pd.read_excel(file)
 print(movies.head())
@@ -186,5 +239,5 @@ print(sorted_tab.values)
 print(movies.shape)'''
 
 
-print('Marina very clever!\n')
+
 
