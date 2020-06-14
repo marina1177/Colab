@@ -144,9 +144,15 @@ def main():
 
 # составление dict с частотой в качестве ключа и вложенным списком строк данных в качестве значения
 # {
+<<<<<<< HEAD
 # '25' : [[row[0]],[row[1]],..,[row[len(mandata[freq])-1]]],
 # '100': [[row[0]],[row[1]],..,[row[len(mandata[freq])-1]]],
 # '200': [[row[0]],[row[1]],..,[row[len(mandata[freq])-1]]]
+=======
+# '25' : [[row[0]],[row[1]],..,[row[len(mandata[freq])]]],
+# '100': [[row[0]],[row[1]],..,[row[len(mandata[freq])]]],
+# '200': [[row[0]],[row[1]],..,[row[len(mandata[freq])]]]
+>>>>>>> 260d327639be671497cb81fb95d22d147dc19886
 # }
 	mandata= fill_dict(ws, start_row=2)
 	Calibrate_Curve = fill_refdata(mandata)
@@ -168,7 +174,10 @@ def main():
 #*************************************************************
 
 	for i in range(1, len(test_files)):
+<<<<<<< HEAD
 		name = test_files[i]
+=======
+>>>>>>> 260d327639be671497cb81fb95d22d147dc19886
 		file_path = join(dir, test_files[i])
 		print(file_path)
 		wb = load_workbook(filename=file_path, data_only=True, read_only=True)
@@ -212,6 +221,7 @@ def main():
 			dict[freq].sort(key=def_disp, reverse=False)
 			print(dict[freq])
 			print('*******\n')
+<<<<<<< HEAD
 			# создание файлов нормированных калибровочных сквозных сигналов
 		for freq in dict:
 			exname = (name.split('.'))[0] + '_' + str(int(freq)) + 'kHz_norm.xlsx'
@@ -227,6 +237,8 @@ def main():
 				zagl = ws.cell(row=1, column=i)
 				zagl.alignment = Alignment(horizontal='center')
 			wb.save(file_path)
+=======
+>>>>>>> 260d327639be671497cb81fb95d22d147dc19886
 	print('Marina very clever!\n')
 
 if __name__ == "__main__":
