@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import pandas as pd
 import matplotlib.pyplot as plt
+import os
 from openpyxl import load_workbook, Workbook
 from  openpyxl.styles import Alignment, PatternFill, Font
 import numpy as np
@@ -24,10 +25,21 @@ cracks_deep = [100, 80, 60, 40, 20]
 cracks_files = []
 
 test_deep = [100, 80, 50, 20, 15]
-test_files = ['test_deep100.xlsx', 'test_deep80.xlsx', 'test_deep50.xlsx' ]
+test_files = ['test_deep100.xlsx', 'test_deep80.xlsx', 'test_deep50.xlsx', 'test_deep20.xlsx', 'test_deep15.xlsx']
+
+rect_files = ['rect_5_0.2_20proc.xlsx', 'rect_5_0.2_40proc.xlsx', 'rect_5_0.2_60proc.xlsx',
+              'rect_5_0.2_80proc.xlsx', 'rect_5_0.2_100proc.xlsx',
+              'rect_5_0.4_40_20deep.xlsx', 'rect_5_0.4_100_80_60deep.xlsx',
+              'rect_5_0.6_100_80_60_40_20deep.xlsx',
+              'rect_8_0.2_40_20deep.xlsx','rect_8_0.2_100_80_60deep.xlsx',
+              'rect_8_0.4_40_20deep.xlsx', 'rect_8_0.4_100_80_60deep.xlsx',
+              'rect_8_0.6_100_80_60_40_20deep.xlsx',
+              'rect_12_0.2_40_20deep.xlsx', 'rect_12_0.2_100_80_60deep.xlsx',
+              'rect_12_0.4_100_80_60_40_20deep.xlsx',
+              'rect_12_0.6_100_80_60_40_20deep.xlsx']
 dir = './rect'
 normdir = './norm'
-
+rectnormdir = './norm/rect_norm'
 
 class Calibrate100(object):
 	def __init__(self, z=0+0j, freq=0, norm=0+0j):
@@ -39,10 +51,7 @@ class Calibrate100(object):
 		self.dphase = [] #80/50/20/15
 		self.damp = []  #80/50/20/15
 
-		self.dphase15=0
-		self.dphase20=0
-		self.dphase50=0
-		self.dphase80=0
+		self.cracks = [] #список Cracks для каждой частоты
 
 
 class Cracks(object):
@@ -50,9 +59,24 @@ class Cracks(object):
 		self.type = crack_type
 		self.len = crack_len
 		self.w = crack_w
-		self.deep = deep
-		self.freq = freq
+		self.deep = 1
+
 		self.phase = math.degrees(cmath.phase(zmax))
+		self.amp = abs(zmax)
+		# нормированная разность фаз для каждой частоты
+		self.dphase = []  # 80/60/40/20/
+		self.damp = []  # 80/60/40/20/
+
+class ThisCracks(object):
+	def __init__(self, crack_type=None,  crack_len=0, crack_w=0, deep=0, freq=0):
+		self.type = crack_type
+		self.len = crack_len
+		self.w = crack_w
+		self.freq = freq
+		self.deep = deep
+		self.phase =  0
+		self.amp = 0
+		self.data = []
 
 def fun(x):
 	return [x[0]**2 + x[1]**2 - 100.0,
@@ -73,6 +97,24 @@ def normalize(z):
 	print(f'z_norm = {z*norm}\nAnorm = {abs(z*norm)}, fi = {math.degrees(cmath.phase(z*norm))}')
 	#вернуть нормировочный коэффициент
 	return(norm)
+
+
+def fill_nested_dict(ws, start_row):
+	freq_dict = {}
+	for row in ws.iter_rows(min_row=start_row, min_col=1, max_row=ws.max_row, max_col=ws.max_column):
+		if len(row) > 0:
+			freq = row[2].value
+			if freq is not None:
+				if freq not in freq_dict:
+					freq_dict[freq] = {}
+			# print(f'empty freq_dict: {freq_dict}')
+			deep = row[1].value
+			if deep is not None:
+				data = [cell.value for cell in row]
+				if deep not in freq_dict[freq]:
+					freq_dict[freq][deep] = []
+				freq_dict[freq][deep].append(data)
+	return (freq_dict)
 
 
 def fill_dict(ws, start_row):
@@ -120,23 +162,44 @@ def fill_refdata(mandata):
 		print('*******\n')
 	return Calibrate_Curve
 
+def save_alone_deep(dict,header, name):
+	for freq in dict:
+		exname = (name.split('.'))[0] + '_' + str(int(freq)) + 'kHz_norm.xlsx'
+		file_path = join(normdir, exname)
+		if not os.path.exists(file_path):
+			wb = Workbook()
+			ws = wb.active
+			ws.append(header)
+			for row in dict[freq]:
+				ws.append(row)
+			# выравнивание колонок:
+			for i in range(1, 5):
+				zagl = ws.cell(row=1, column=i)
+				zagl.alignment = Alignment(horizontal='center')
+			wb.save(file_path)
+
+def save_cracks(dict, file_path, header, num_col):
+	wb = Workbook()
+	ws = wb.active
+	ws.append(header)
+	for row in dict:
+		ws.append(row)
+	# выравнивание колонок:
+	for i in range(1, num_col):
+		zagl = ws.cell(row=1, column=i)
+		zagl.alignment = Alignment(horizontal='center')
+	wb.save(file_path)
+
 def main():
 
 	file_path = join(dir, test_files[0])
 	wb = load_workbook(filename=file_path, data_only=True, read_only=True)
 	wsn = list(wb.sheetnames)
 	ws = wb.active
-	"""wsdata=None
-	for i in wsn:
-		if wb[i]['B1'].value == 'freq[kHz]':
-			wsdata=i
-	if wsdata==None:
-		print("Error")"""
 	header = [cell.value for cell in next(
 			ws.iter_rows(min_row=1, min_col=1, max_col=ws.max_column))]
 	print(header)
 	wb.close
-
 
 # обработка сигнала от сквозного отверстия:
 # получение нормировочного коэффициента для каждой частоты
@@ -144,15 +207,9 @@ def main():
 
 # составление dict с частотой в качестве ключа и вложенным списком строк данных в качестве значения
 # {
-<<<<<<< HEAD
 # '25' : [[row[0]],[row[1]],..,[row[len(mandata[freq])-1]]],
 # '100': [[row[0]],[row[1]],..,[row[len(mandata[freq])-1]]],
 # '200': [[row[0]],[row[1]],..,[row[len(mandata[freq])-1]]]
-=======
-# '25' : [[row[0]],[row[1]],..,[row[len(mandata[freq])]]],
-# '100': [[row[0]],[row[1]],..,[row[len(mandata[freq])]]],
-# '200': [[row[0]],[row[1]],..,[row[len(mandata[freq])]]]
->>>>>>> 260d327639be671497cb81fb95d22d147dc19886
 # }
 	mandata= fill_dict(ws, start_row=2)
 	Calibrate_Curve = fill_refdata(mandata)
@@ -161,27 +218,28 @@ def main():
 	for freq in mandata:
 		exname = 'test_deep100_' + str(int(freq)) + 'kHz_norm.xlsx'
 		file_path = join(normdir, exname)
-		wb = Workbook()
-		ws = wb.active
-		ws.append(header)
-		for row in mandata[freq]:
-			ws.append(row)
-	#выравнивание колонок:
-		for i in range(1, 4):
-			zagl = ws.cell(row = 1, column=i)
-			zagl.alignment = Alignment(horizontal='center')
-		wb.save(file_path)
-#*************************************************************
+		if not os.path.exists(file_path):
+			wb = Workbook()
+			ws = wb.active
+			ws.append(header)
+			for row in mandata[freq]:
+				ws.append(row)
+			#выравнивание колонок:
+			for i in range(1, 4):
+				zagl = ws.cell(row = 1, column=i)
+				zagl.alignment = Alignment(horizontal='center')
+			wb.save(file_path)
+#*************************************************************************
 
+# сортировка и вычисление dphase & damp для остальных калибровочных отверстий
+# запись нормированных данных в файлы в папку ./norm
 	for i in range(1, len(test_files)):
-<<<<<<< HEAD
 		name = test_files[i]
-=======
->>>>>>> 260d327639be671497cb81fb95d22d147dc19886
 		file_path = join(dir, test_files[i])
 		print(file_path)
 		wb = load_workbook(filename=file_path, data_only=True, read_only=True)
 		ws = wb.active
+		# сохранение заголовка для последующего сохранения в новый файл
 		header = [cell.value for cell in next(
 			ws.iter_rows(min_row=1, min_col=1, max_col=ws.max_column))]
 		print(header)
@@ -191,13 +249,11 @@ def main():
 		ampl = lambda data: data[4]
 		def_disp = lambda data: data[0]
 
-		#sort_test(dict, Calibrate_Curve)
-
 		for freq in dict:
 			for n in range(0, len(Calibrate_Curve)):
 				if Calibrate_Curve[n].freq == freq:
 					norm = Calibrate_Curve[n].norm
-			print(f'n = {n}, freq = {freq}, norm = {norm}')
+			#print(f'n = {n}, freq = {freq}, norm = {norm}')
 
 			for row in dict[freq]:
 				z = complex(row[3], row[2])
@@ -205,41 +261,144 @@ def main():
 				row[2] = (z * norm).imag
 				row[4] = abs(z * norm)
 
+		# сохранение опорных данных  фазы и макс амплидуды
 			# sorting by Amplitude[V](maxZ)
 			dict[freq].sort(key=ampl, reverse=True)
-
 			z = complex(dict[freq][0][3], dict[freq][0][2])
 			for n in range(0, len(Calibrate_Curve)):
 				if Calibrate_Curve[n].freq == freq:
-					print(f'n = {n}, i = {i}')
 					Calibrate_Curve[n].dphase.append(math.degrees(cmath.phase(z)) - Calibrate_Curve[n].phase)
 					Calibrate_Curve[n].damp.append(Calibrate_Curve[n].amp / abs(z))
 					print(f'Phase = {math.degrees(cmath.phase(z))}, dphase = {Calibrate_Curve[n].dphase[i-1]}')
 					print(f'Amp = {abs(z)}, damp = {Calibrate_Curve[n].damp[i - 1]}')
-
+		# возврат сигнала в исходное положение
 			# sorting by def_disp[mm]
 			dict[freq].sort(key=def_disp, reverse=False)
 			print(dict[freq])
+
 			print('*******\n')
-<<<<<<< HEAD
+
 			# создание файлов нормированных калибровочных сквозных сигналов
-		for freq in dict:
-			exname = (name.split('.'))[0] + '_' + str(int(freq)) + 'kHz_norm.xlsx'
-			#print(f'new name = {exname} ')
-			file_path = join(normdir, exname)
-			wb = Workbook()
-			ws = wb.active
-			ws.append(header)
-			for row in dict[freq]:
-				ws.append(row)
-			# выравнивание колонок:
-			for i in range(1, 4):
-				zagl = ws.cell(row=1, column=i)
-				zagl.alignment = Alignment(horizontal='center')
-			wb.save(file_path)
-=======
->>>>>>> 260d327639be671497cb81fb95d22d147dc19886
+
+			save_alone_deep(dict, header, name)
+
+	#*********************************************************************
+
+	# обработка сигналов от прямоугольных трещин
+	# запись нормированных данных в файлы в папку ./norm
+	RectCracks = []# хранятся данные о каждой трещине для записи в файл и парсинга разницы фаз
+	GlobalCracks = []# только данные о соотношении фаз и амплитуд
+
+	for i in range(0, len(rect_files)):
+		name = rect_files[i]
+		file_path = join(dir, name)
+		print(name)
+		crack_split = name.split('_')
+		crack_type = crack_split[0]
+		crack_len = int(crack_split[1])
+		crack_w = float(crack_split[2])
+	#	print(f'crack_type = {crack_type}, len = {crack_len}, w = {crack_w}')
+
+		wb = load_workbook(filename=file_path, data_only=True, read_only=True)
+		ws = wb.active
+		header = [cell.value for cell in next(
+			ws.iter_rows(min_row=1, min_col=1, max_col=ws.max_column))]
+		print(header)
+		wb.close
+		# составление dict с частотой в качестве ключа и вложенным списком строк данных в качестве значения
+		# {
+		# '25' : {'1': [[row[0]],[row[1]],..,[row[len(mandata[freq])-1]]]},
+		#        {'0.8': [[row[0]],[row[1]],..,[row[len(mandata[freq])-1]]]},
+		#        {'0.6': [[row[0]],[row[1]],..,[row[len(mandata[freq])-1]]]},
+		#        {'0.4': [[row[0]],[row[1]],..,[row[len(mandata[freq])-1]]]},
+		#....
+		# '100': [[row[0]],[row[1]],..,[row[len(mandata[freq])-1]]],
+		# '200': [[row[0]],[row[1]],..,[row[len(mandata[freq])-1]]]
+		# }
+		if (header[1] == 'freq[kHz]') or (header[1] == 'freq (kHz)'):
+			freq_dict = fill_dict(ws, start_row=2)
+			for freq in freq_dict:
+				deep = 0
+				for n in crack_split[3]:
+					if n.isdigit():
+						deep = deep*10 + int(n)
+				crack_data = ThisCracks(crack_type, crack_len, crack_w,
+				                        float(deep)/100, freq)
+				for n in range(0, len(Calibrate_Curve)):
+					if Calibrate_Curve[n].freq == freq:
+						norm = Calibrate_Curve[n].norm
+			#	print(f'freq = {freq}, deep = {deep}, norm = {norm}')
+				for row in freq_dict[freq]:
+					z = complex(float(row[3]), float(row[2]))
+					row[3] = (z * norm).real
+					row[2] = (z * norm).imag
+					row[4] = abs(z * norm)
+				ampl = lambda data: float(data[4])
+				freq_dict[freq].sort(key=ampl, reverse=False)
+				z = complex(freq_dict[freq][0][3], freq_dict[freq][0][2])
+				crack_data.phase = math.degrees(cmath.phase(z))
+				crack_data.amp = abs(z)
+				# print(f'crack_phase ={crack_data.phase}, crack_amp = {crack_data.amp}')
+				# возврат сигнала в исходное положение
+				# sorting by def_disp[mm]
+				def_disp = lambda data: float(data[0])
+				freq_dict[freq].sort(key=def_disp, reverse=False)
+				crack_data.data = freq_dict[freq]
+				# print(crack_data.data)
+				# print('*****\n')
+				RectCracks.append(crack_data)
+				exname = crack_type + '_' + str(int(crack_len)) + '_' + str(float(crack_w)) + '_' + str(int(deep)) + 'deep' + '_' + str(int(freq)) + 'kHz_norm.xlsx'
+				new_file_path = join(rectnormdir, exname)
+				if not os.path.exists(new_file_path):
+					save_cracks(dict=freq_dict[freq], file_path=new_file_path, header=header, num_col=5)
+				#save_crack_norm()
+				print('*****\n')
+
+		else:
+			freq_dict = fill_nested_dict(ws, 2)
+
+			# формирование списка с данными о каждой трещине
+			# для трещины с конкретной глубиной, длиной и раскрытием
+			# сохраняются данные для нормировки и записи в файл в список RectCracks
+			for freq in freq_dict:
+				for deep in freq_dict[freq]:
+					#print(freq_dict[freq][deep])
+					crack_data = ThisCracks(crack_type, crack_len, crack_w, deep, freq)
+					#crack_data.data = freq_dict[freq][deep]
+					for n in range(0,len(Calibrate_Curve)):
+						if Calibrate_Curve[n].freq == freq:
+							norm = Calibrate_Curve[n].norm
+							#print(f'freq = {freq}, deep = {deep}, norm = {norm}')
+					for row in freq_dict[freq][deep]:
+						z = complex(float(row[4]), float(row[3]))
+						row[4] = (z * norm).real
+						row[3] = (z * norm).imag
+						row[5] = abs(z * norm)
+
+					ampl = lambda data: float(data[5])
+					freq_dict[freq][deep].sort(key=ampl, reverse=False)
+					z = complex(freq_dict[freq][deep][0][4], freq_dict[freq][deep][0][3])
+					crack_data.phase = math.degrees(cmath.phase(z))
+					crack_data.amp = abs(z)
+					#print(f'crack_phase ={crack_data.phase}, crack_amp = {crack_data.amp}')
+
+					# возврат сигнала в исходное положение
+					# sorting by def_disp[mm]
+					def_disp = lambda data: float(data[0])
+					freq_dict[freq][deep].sort(key=def_disp, reverse=False)
+					crack_data.data = freq_dict[freq][deep]
+					#print(crack_data.data)
+					#print('*****\n')
+					RectCracks.append(crack_data)
+					#записать RectCracks в файлы
+					exname = crack_type + '_'+str(int(crack_len))+'_' + str(float(crack_w))+'_'+str(int(float(deep)*100))+'deep'+'_'+ str(int(freq)) + 'kHz_norm.xlsx'
+					new_file_path = join(rectnormdir, exname)
+					if not os.path.exists(new_file_path):
+						save_cracks(dict=freq_dict[freq][deep], file_path=new_file_path, header=header, num_col=6)
+
+	print('*******\n')
 	print('Marina very clever!\n')
+
 
 if __name__ == "__main__":
 	main()
