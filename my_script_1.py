@@ -50,30 +50,31 @@ class Calibrate100(object):
 #нормированная разность фаз для каждой частоты
 		self.dphase = [] #80/50/20/15
 		self.damp = []  #80/50/20/15
+		
+		# {'1':phase100, '0.8:phase80, '0.6':phase60 ...}
+		# {'1':amp100, '0.8:amp80, '0.6':amp60 ...}
 
-		self.cracks = [] #список Cracks для каждой частоты
-
-
-class Cracks(object):
-	def __init__(self, zmax=0+0j, crack_type=None,  crack_len=0, crack_w=0, deep=0, freq=0):
-		self.type = crack_type
-		self.len = crack_len
-		self.w = crack_w
-		self.deep = 1
-
-		self.phase = math.degrees(cmath.phase(zmax))
-		self.amp = abs(zmax)
-		# нормированная разность фаз для каждой частоты
-		self.dphase = []  # 80/60/40/20/
-		self.damp = []  # 80/60/40/20/
+		self.cracks = {} #список Cracks для каждой частоты
+		self.dphase_cracks = {}
+		#{
+		#   (5, 0.2): {'1':phase100, '0.8:phase80, '0.6':phase60 ...},
+		#   (5, 0.4):  {'1':phase100, '0.8:phase80, '0.6':phase60 ...},
+		#   (5, 0.6): {'1':phase100, '0.8:phase80, '0.6':phase60 ...},
+		#     ...
+		#   (12, 0.8):  {'1':phase100, '0.8:phase80, '0.6':phase60 ...},
+		#   (12, 1): {'1':phase100, '0.8:phase80, '0.6':phase60 ...}
+		# }
 
 class ThisCracks(object):
 	def __init__(self, crack_type=None,  crack_len=0, crack_w=0, deep=0, freq=0):
+
+		self.freq = freq
 		self.type = crack_type
+		self.deep = deep
+
 		self.len = crack_len
 		self.w = crack_w
-		self.freq = freq
-		self.deep = deep
+
 		self.phase =  0
 		self.amp = 0
 		self.data = []
@@ -287,12 +288,11 @@ def main():
 	# обработка сигналов от прямоугольных трещин
 	# запись нормированных данных в файлы в папку ./norm
 	RectCracks = []# хранятся данные о каждой трещине для записи в файл и парсинга разницы фаз
-	GlobalCracks = []# только данные о соотношении фаз и амплитуд
 
 	for i in range(0, len(rect_files)):
 		name = rect_files[i]
 		file_path = join(dir, name)
-		print(name)
+		#print(name)
 		crack_split = name.split('_')
 		crack_type = crack_split[0]
 		crack_len = int(crack_split[1])
@@ -303,7 +303,7 @@ def main():
 		ws = wb.active
 		header = [cell.value for cell in next(
 			ws.iter_rows(min_row=1, min_col=1, max_col=ws.max_column))]
-		print(header)
+		#print(header)
 		wb.close
 		# составление dict с частотой в качестве ключа и вложенным списком строк данных в качестве значения
 		# {
@@ -344,16 +344,11 @@ def main():
 				def_disp = lambda data: float(data[0])
 				freq_dict[freq].sort(key=def_disp, reverse=False)
 				crack_data.data = freq_dict[freq]
-				# print(crack_data.data)
-				# print('*****\n')
 				RectCracks.append(crack_data)
 				exname = crack_type + '_' + str(int(crack_len)) + '_' + str(float(crack_w)) + '_' + str(int(deep)) + 'deep' + '_' + str(int(freq)) + 'kHz_norm.xlsx'
 				new_file_path = join(rectnormdir, exname)
 				if not os.path.exists(new_file_path):
 					save_cracks(dict=freq_dict[freq], file_path=new_file_path, header=header, num_col=5)
-				#save_crack_norm()
-				print('*****\n')
-
 		else:
 			freq_dict = fill_nested_dict(ws, 2)
 
@@ -362,33 +357,26 @@ def main():
 			# сохраняются данные для нормировки и записи в файл в список RectCracks
 			for freq in freq_dict:
 				for deep in freq_dict[freq]:
-					#print(freq_dict[freq][deep])
 					crack_data = ThisCracks(crack_type, crack_len, crack_w, deep, freq)
-					#crack_data.data = freq_dict[freq][deep]
 					for n in range(0,len(Calibrate_Curve)):
 						if Calibrate_Curve[n].freq == freq:
 							norm = Calibrate_Curve[n].norm
-							#print(f'freq = {freq}, deep = {deep}, norm = {norm}')
 					for row in freq_dict[freq][deep]:
 						z = complex(float(row[4]), float(row[3]))
 						row[4] = (z * norm).real
 						row[3] = (z * norm).imag
 						row[5] = abs(z * norm)
-
 					ampl = lambda data: float(data[5])
 					freq_dict[freq][deep].sort(key=ampl, reverse=False)
 					z = complex(freq_dict[freq][deep][0][4], freq_dict[freq][deep][0][3])
 					crack_data.phase = math.degrees(cmath.phase(z))
 					crack_data.amp = abs(z)
-					#print(f'crack_phase ={crack_data.phase}, crack_amp = {crack_data.amp}')
 
 					# возврат сигнала в исходное положение
 					# sorting by def_disp[mm]
 					def_disp = lambda data: float(data[0])
 					freq_dict[freq][deep].sort(key=def_disp, reverse=False)
 					crack_data.data = freq_dict[freq][deep]
-					#print(crack_data.data)
-					#print('*****\n')
 					RectCracks.append(crack_data)
 					#записать RectCracks в файлы
 					exname = crack_type + '_'+str(int(crack_len))+'_' + str(float(crack_w))+'_'+str(int(float(deep)*100))+'deep'+'_'+ str(int(freq)) + 'kHz_norm.xlsx'
@@ -396,8 +384,46 @@ def main():
 					if not os.path.exists(new_file_path):
 						save_cracks(dict=freq_dict[freq][deep], file_path=new_file_path, header=header, num_col=6)
 
-	print('*******\n')
+	#print('******\n')
+		#объединение для  Calibrsate_Curve для трещины c конкретными параметрами len, w на каждой частоте
+	for cc in Calibrate_Curve:
+		for rc in RectCracks:
+			if cc.freq == rc.freq:
+				tup = tuple((rc.len,rc.w))
+				if (tup not in cc.cracks):
+					cc.cracks[tup] = {}
+				if(rc.deep not in cc.cracks[tup]):
+					cc.cracks[tup][rc.deep] = rc.phase
+		#print(f'freq ={cc.freq}, cracks = {cc.cracks}')
+
+	#print('******\n')
+	for cc in Calibrate_Curve:
+		for crack in cc.cracks:
+			if crack not in cc.dphase_cracks:
+				cc.dphase_cracks[crack] = {}
+			for deep in cc.cracks[crack]:
+				if deep not in cc.dphase_cracks[crack]:
+					cc.dphase_cracks[crack][deep] = cc.cracks[crack][deep] - cc.phase
+
+		#print(f'freq ={cc.freq}, dphasecracks = {cc.dphase_cracks}')
 	print('Marina very clever!\n')
+'''	import plotly.graph_objects as go
+
+	fig = go.Figure()
+
+	fig.add_trace(go.Scatter(
+		x=[0, 1, 2, 3, 4, 5, 6, 7, 8],
+		y=[8, 7, 6, 5, 4, 3, 2, 1, 0]
+	))
+
+	fig.add_trace(go.Scatter(
+		x=[0, 1, 2, 3, 4, 5, 6, 7, 8],
+		y=[0, 1, 2, 3, 4, 5, 6, 7, 8]
+	))
+
+	fig.update_layout(xaxis_type="log", yaxis_type="log")
+	fig.show()'''
+
 
 
 if __name__ == "__main__":
