@@ -181,6 +181,12 @@ def save_alone_deep(dict,header, name):
 				zagl.alignment = Alignment(horizontal='center')
 			wb.save(file_path)
 
+def turn(dict_freq, z):
+	for row in dict_freq:
+		row[3] = (z).real
+		row[2] = (z).imag
+		row[4] = abs(z)
+
 def save_cracks(dict, file_path, header, num_col):
 	wb = Workbook()
 	ws = wb.active
@@ -259,7 +265,6 @@ def main():
 			for n in range(0, len(Calibrate_Curve)):
 				if Calibrate_Curve[n].freq == freq:
 					norm = Calibrate_Curve[n].norm
-
 			#print(f'n = {n}, freq = {freq}, norm = {norm}')
 			for row in dict[freq]:
 				z = complex(row[3], row[2])
@@ -271,9 +276,20 @@ def main():
 			# sorting by Amplitude[V](maxZ)
 			dict[freq].sort(key=ampl, reverse=True)
 			z = complex(dict[freq][0][3], dict[freq][0][2])
+			sign = 1
+			phase = math.degrees(cmath.phase(z))
+			if (phase < 0) & (phase < -90):
+				print(f'phase ={phase}')
+				sign = -1
+				for row in dict[freq]:
+					z = complex(row[3], row[2])*sign
+					row[3] = (z ).real
+					row[2] = (z ).imag
+					row[4] = abs(z)
 
 			for n in range(0, len(Calibrate_Curve)):
 				if Calibrate_Curve[n].freq == freq:
+
 					Calibrate_Curve[n].clbr_phase[deep] = math.degrees(cmath.phase(z))
 					Calibrate_Curve[n].clbr_amp[deep] = abs(z)
 
@@ -298,7 +314,7 @@ def main():
 	for i in range(0, len(rect_files)):
 		name = rect_files[i]
 		file_path = join(dir, name)
-		#print(name)
+		print(name)
 
 		crack_split = name.split('_')
 		crack_type = crack_split[0]
@@ -341,7 +357,22 @@ def main():
 
 				ampl = lambda data: float(data[4])
 				freq_dict[freq].sort(key=ampl, reverse=False)
-				z = complex(freq_dict[freq][0][3], freq_dict[freq][0][2])
+
+				z = complex(dict[freq][0][3], dict[freq][0][2])
+				sign = 1
+				phase = math.degrees(cmath.phase(z))
+				if (phase > 90) & (phase < 180):
+					print(f'problem phase_1 ={phase}')
+					sign = complex(0, -1)
+				elif (phase < 0) & (phase < -90):
+					print(f'problem phase_2 ={phase}')
+					sign = -1
+				for row in dict[freq]:
+					z = complex(row[3], row[2]) * sign
+					row[3] = (z).real
+					row[2] = (z).imag
+					row[4] = abs(z)
+
 				crack_data.phase = math.degrees(cmath.phase(z))
 				crack_data.amp = abs(z)
 
@@ -371,7 +402,23 @@ def main():
 					ampl = lambda data: float(data[5])
 					freq_dict[freq][deep].sort(key=ampl, reverse=False)
 					z = complex(freq_dict[freq][deep][0][4], freq_dict[freq][deep][0][3])
+					print(f'z = {z}')
+					phase = math.degrees(cmath.phase(z))
+					if (phase > 90) & (phase < 180):
+						print(f'problem phase_1 ={phase}')
+						sign = complex(0, -1)
+						z = complex(row[3], row[2]) * sign
+						turn(dict[freq], z)
+					elif (phase < 0) & (phase < -90):
+						print(f'problem phase_2 ={phase}')
+						sign = -1
+						z = complex(row[3], row[2]) * sign
+						turn(dict[freq], z)
+
+
+					print(f'z = {z}')
 					crack_data.phase = math.degrees(cmath.phase(z))
+					print(f'phase ={crack_data.phase}\n***')
 					crack_data.amp = abs(z)
 
 					# возврат сигнала в исходное положение
@@ -437,7 +484,7 @@ def main():
 			sort = sorted(cc.cracks[crack].items(), key=lambda kv: kv[1], reverse=False)
 			#print(sort)
 			for i in sort:
-				if (crack[0] == 5):
+				if (crack[0] == 12):
 					crack_deep.append(int(float(i[0]) * 100))
 					crack_deg.append(i[1])
 			fig.add_trace(go.Scatter(x=crack_deg, y=crack_deep, text=[str(i)], mode='markers', name=str(crack)))
