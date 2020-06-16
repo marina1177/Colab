@@ -19,7 +19,6 @@ from os.path import  join, abspath
 # Использование cufflinks в офлайн-режиме
 import cufflinks
 cufflinks.go_offline()
-import plotly as pl
 
 cracks_deep = [100, 80, 60, 40, 20]
 cracks_files = []
@@ -412,30 +411,115 @@ def main():
 		print(f'freq = {cc.freq}, clbr_phase = {cc.clbr_phase}')
 
 	print('Marina very clever!\n')
-	import plotly.graph_objects as go
 
-	fig = go.Figure()
-	deep= []
-	deg = []
-	# сортировка словаря по значению:
-
-	sorted_by_value = sorted(Calibrate_Curve[1].clbr_phase.items(), key=lambda kv: kv[1],  reverse=False)
-	print(sorted_by_value)
-	for i in sorted_by_value:
-		deep.append(i[0])
-		deg.append(i[1])
-
-	fig.add_trace(go.Scatter(x=deg, y = deep))
-
-	'''fig.add_trace(go.Scatter(
-		x=[0, 1, 2, 3, 4, 5, 6, 7, 8],
-		y=[0, 1, 2, 3, 4, 5, 6, 7, 8]
-	))'''
-
-	fig.update_layout(xaxis_type="log", yaxis_type="log")
-	fig.show()
+#********************VIS**************************************
+	#import plotly.plotly as py
+	from plotly import graph_objs as go
+	#import plotly.express as px
 
 
+	for cc in Calibrate_Curve:
+		title = f'freq = {cc.freq}'
+
+		fig = go.Figure()
+		deep = []
+		deg = []
+		sorted_by_value = sorted(cc.clbr_phase.items(), key=lambda kv: kv[1], reverse=False)
+		for i in sorted_by_value:
+			deep.append(int(float(i[0]) * 100))
+			deg.append(i[1])
+		fig.add_trace(go.Scatter(x=deg, y=deep, name='Calibrate' + title, line_shape='spline'))
+
+		for crack in cc.cracks:
+			#print(crack)
+			crack_deep = []
+			crack_deg = []
+			sort = sorted(cc.cracks[crack].items(), key=lambda kv: kv[1], reverse=False)
+			#print(sort)
+			for i in sort:
+				if (crack[0] == 5):
+					crack_deep.append(int(float(i[0]) * 100))
+					crack_deg.append(i[1])
+			fig.add_trace(go.Scatter(x=crack_deg, y=crack_deep, text=[str(i)], mode='markers', name=str(crack)))
+
+		fig.update_layout(title_text=title, xaxis_type="linear", yaxis_type="linear",
+		                  xaxis_title="Phase [degrees]",
+		                  yaxis_title="Deep [%]")
+		fig.show()
+
+
+
+'''
+	var dotDiv = document.getElementById("dot-chart");
+ 
+var traceA = {
+  type: "scatter",
+  mode: "markers",
+  x: [2011, 2012, 2013, 2014, 2015, 2016],
+  y: [789, 795, 760, 775, 780, 783],
+  name: 'Highest Marks',
+  marker: {
+    color: 'rgba(156, 165, 196, 0.5)',
+    line: {
+      color: 'rgba(156, 165, 196, 1)',
+      width: 1,
+    },
+    symbol: 'circle',
+    size: 20
+  },
+  hoverlabel: {
+    bgcolor: 'black',
+  }
+};
+ 
+var traceB = {
+  type: "scatter",
+  mode: "markers",
+  x: [2011, 2012, 2013, 2014, 2015, 2016],
+  y: [769, 755, 747, 770, 771, 781],
+  name: 'Second Highest Marks',
+  marker: {
+    color: 'rgba(165, 196, 50, 0.5)',
+    line: {
+      color: 'rgba(165, 196, 50, 1)',
+      width: 1,
+    },
+    symbol: 'circle',
+    size: 20
+  },
+  hoverlabel: {
+    bgcolor: 'black',
+  }
+};
+ 
+var data = [traceA, traceB];
+ 
+var layout = {
+  title: 'Marks Obtained by Top Two Students',
+  xaxis: {
+    showgrid: false,
+    showline: true,
+    linecolor: 'rgb(200, 0, 0)',
+    ticks: 'outside',
+    tickcolor: 'rgb(200, 0, 0)',
+    tickwidth: 4
+  },
+  legend: {
+    bgcolor: 'white',
+    borderwidth: 1,
+    bordercolor: 'black',
+    orientation: 'h',
+    xanchor: 'center',
+    x: 0.5,
+    font: {
+      size: 12,
+    }
+  },
+  paper_bgcolor: 'rgb(255, 230, 255)',
+  plot_bgcolor: 'rgb(255, 230, 255)'
+};
+ 
+Plotly.plot(dotDiv, data, layout);'''
 
 if __name__ == "__main__":
 	main()
