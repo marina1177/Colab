@@ -50,12 +50,12 @@ class Calibrate100(object):
 #нормированная разность фаз для каждой частоты
 		self.dphase = [] #80/50/20/15
 		self.damp = []  #80/50/20/15
-		
-		# {'1':phase100, '0.8:phase80, '0.6':phase60 ...}
-		# {'1':amp100, '0.8:amp80, '0.6':amp60 ...}
 
-		self.cracks = {} #список Cracks для каждой частоты
-		self.dphase_cracks = {}
+		self.clbr_phase = {}  # {'1':phase100, '0.8:phase80, '0.6':phase60 ...}
+		self.clbr_amp = {}    # {'1':amp100, '0.8:amp80, '0.6':amp60 ...}
+
+		self.cracks = {} #список phase для каждой Cracks
+		self.dphase_cracks = {} #список dphase для каждой Cracks
 		#{
 		#   (5, 0.2): {'1':phase100, '0.8:phase80, '0.6':phase60 ...},
 		#   (5, 0.4):  {'1':phase100, '0.8:phase80, '0.6':phase60 ...},
@@ -78,6 +78,7 @@ class ThisCracks(object):
 		self.phase =  0
 		self.amp = 0
 		self.data = []
+
 
 def fun(x):
 	return [x[0]**2 + x[1]**2 - 100.0,
@@ -132,34 +133,36 @@ def fill_dict(ws, start_row):
 	return (mandata)
 
 
-def fill_refdata(mandata):
+def fill_refdata(clbrt_dict):
 	# lambda-функции для сортировки по ключу
 	ampl = lambda data: data[4]
 	def_disp = lambda data: data[0]
-
+#   [0]             [1]         [2]         [3]     [4]
+#['def_disp[mm]', 'freq[kHz]', 'Im[V]', 'Re[V]', 'Amplitude[V]']
 	Calibrate_Curve = []
-	for freq in mandata:
-		#print(f'Key-frequency {freq}, number str: {len(mandata[freq])}')
+	for freq in clbrt_dict:
 		# sorting by Amplitude[V](maxZ)
-		mandata[freq].sort(key=ampl, reverse=True)
+		clbrt_dict[freq].sort(key=ampl, reverse=True)
 
 		# complex number formation for turning
-		z = complex(mandata[freq][0][3], mandata[freq][0][2])
-		#print(f'original_z = {z}')
+		z = complex(clbrt_dict[freq][0][3], clbrt_dict[freq][0][2])
 		norm = normalize(z)
 		print(f'freq = {freq},norm = {norm}')
+
 		clbrt_data = Calibrate100(complex((z * norm).real, (z * norm).imag),
-		                          int(mandata[freq][0][1]), norm)
+		                          int(clbrt_dict[freq][0][1]), norm)
+		clbrt_data.clbr_phase = {}
+		clbrt_data.clbr_phase[1.0] = math.degrees(cmath.phase(z*norm))
+		clbrt_data.clbr_amp[1.0] = abs(z*norm)
+		print(f'clbrt_data.clbr_phase= {clbrt_data.clbr_phase}')
 		Calibrate_Curve.append(clbrt_data)
-		for row in mandata[freq]:
+		for row in clbrt_dict[freq]:
 			z = complex(row[3], row[2])
 			row[3] = (z * norm).real
 			row[2] = (z * norm).imag
 			row[4] = abs(z * norm)
-
 		# sorting by def_disp[mm]
-		mandata[freq].sort(key=def_disp, reverse=False)
-		#print(mandata[freq])
+		clbrt_dict[freq].sort(key=def_disp, reverse=False)
 		print('*******\n')
 	return Calibrate_Curve
 
@@ -212,21 +215,21 @@ def main():
 # '100': [[row[0]],[row[1]],..,[row[len(mandata[freq])-1]]],
 # '200': [[row[0]],[row[1]],..,[row[len(mandata[freq])-1]]]
 # }
-	mandata= fill_dict(ws, start_row=2)
-	Calibrate_Curve = fill_refdata(mandata)
+	clbrt_dict= fill_dict(ws, start_row=2)
+	Calibrate_Curve = fill_refdata(clbrt_dict)
 
 	# создание файлов нормированных калибровочных сквозных сигналов
-	for freq in mandata:
+	for freq in clbrt_dict:
 		exname = 'test_deep100_' + str(int(freq)) + 'kHz_norm.xlsx'
 		file_path = join(normdir, exname)
 		if not os.path.exists(file_path):
 			wb = Workbook()
 			ws = wb.active
 			ws.append(header)
-			for row in mandata[freq]:
+			for row in clbrt_dict[freq]:
 				ws.append(row)
 			#выравнивание колонок:
-			for i in range(1, 4):
+			for i in range(1, 5):
 				zagl = ws.cell(row = 1, column=i)
 				zagl.alignment = Alignment(horizontal='center')
 			wb.save(file_path)
@@ -236,26 +239,29 @@ def main():
 # запись нормированных данных в файлы в папку ./norm
 	for i in range(1, len(test_files)):
 		name = test_files[i]
+		test_split = name.split('_')
 		file_path = join(dir, test_files[i])
 		print(file_path)
+		deep = (int(test_split[1][4]) * 10 + int(test_split[1][5]))/100
 		wb = load_workbook(filename=file_path, data_only=True, read_only=True)
 		ws = wb.active
 		# сохранение заголовка для последующего сохранения в новый файл
 		header = [cell.value for cell in next(
 			ws.iter_rows(min_row=1, min_col=1, max_col=ws.max_column))]
-		print(header)
 		wb.close
+
 		dict=fill_dict(ws=ws, start_row=2)
 
 		ampl = lambda data: data[4]
 		def_disp = lambda data: data[0]
 
 		for freq in dict:
+			print(f'freq = {freq}')
 			for n in range(0, len(Calibrate_Curve)):
 				if Calibrate_Curve[n].freq == freq:
 					norm = Calibrate_Curve[n].norm
-			#print(f'n = {n}, freq = {freq}, norm = {norm}')
 
+			#print(f'n = {n}, freq = {freq}, norm = {norm}')
 			for row in dict[freq]:
 				z = complex(row[3], row[2])
 				row[3] = (z * norm).real
@@ -266,22 +272,23 @@ def main():
 			# sorting by Amplitude[V](maxZ)
 			dict[freq].sort(key=ampl, reverse=True)
 			z = complex(dict[freq][0][3], dict[freq][0][2])
+
 			for n in range(0, len(Calibrate_Curve)):
 				if Calibrate_Curve[n].freq == freq:
+					Calibrate_Curve[n].clbr_phase[deep] = math.degrees(cmath.phase(z))
+					Calibrate_Curve[n].clbr_amp[deep] = abs(z)
+
 					Calibrate_Curve[n].dphase.append(math.degrees(cmath.phase(z)) - Calibrate_Curve[n].phase)
 					Calibrate_Curve[n].damp.append(Calibrate_Curve[n].amp / abs(z))
 					print(f'Phase = {math.degrees(cmath.phase(z))}, dphase = {Calibrate_Curve[n].dphase[i-1]}')
 					print(f'Amp = {abs(z)}, damp = {Calibrate_Curve[n].damp[i - 1]}')
-		# возврат сигнала в исходное положение
+					print(f'clbrt_phase = {Calibrate_Curve[n].clbr_phase}')
+			# возврат сигнала в исходное положение
 			# sorting by def_disp[mm]
 			dict[freq].sort(key=def_disp, reverse=False)
 			print(dict[freq])
-
-			print('*******\n')
-
-			# создание файлов нормированных калибровочных сквозных сигналов
-
 			save_alone_deep(dict, header, name)
+			print('********************************\n')
 
 	#*********************************************************************
 
@@ -293,18 +300,18 @@ def main():
 		name = rect_files[i]
 		file_path = join(dir, name)
 		#print(name)
+
 		crack_split = name.split('_')
 		crack_type = crack_split[0]
 		crack_len = int(crack_split[1])
 		crack_w = float(crack_split[2])
-	#	print(f'crack_type = {crack_type}, len = {crack_len}, w = {crack_w}')
 
 		wb = load_workbook(filename=file_path, data_only=True, read_only=True)
 		ws = wb.active
 		header = [cell.value for cell in next(
 			ws.iter_rows(min_row=1, min_col=1, max_col=ws.max_column))]
-		#print(header)
 		wb.close
+
 		# составление dict с частотой в качестве ключа и вложенным списком строк данных в качестве значения
 		# {
 		# '25' : {'1': [[row[0]],[row[1]],..,[row[len(mandata[freq])-1]]]},
@@ -327,19 +334,18 @@ def main():
 				for n in range(0, len(Calibrate_Curve)):
 					if Calibrate_Curve[n].freq == freq:
 						norm = Calibrate_Curve[n].norm
-			#	print(f'freq = {freq}, deep = {deep}, norm = {norm}')
 				for row in freq_dict[freq]:
 					z = complex(float(row[3]), float(row[2]))
 					row[3] = (z * norm).real
 					row[2] = (z * norm).imag
 					row[4] = abs(z * norm)
+
 				ampl = lambda data: float(data[4])
 				freq_dict[freq].sort(key=ampl, reverse=False)
 				z = complex(freq_dict[freq][0][3], freq_dict[freq][0][2])
 				crack_data.phase = math.degrees(cmath.phase(z))
 				crack_data.amp = abs(z)
-				# print(f'crack_phase ={crack_data.phase}, crack_amp = {crack_data.amp}')
-				# возврат сигнала в исходное положение
+
 				# sorting by def_disp[mm]
 				def_disp = lambda data: float(data[0])
 				freq_dict[freq].sort(key=def_disp, reverse=False)
@@ -351,10 +357,6 @@ def main():
 					save_cracks(dict=freq_dict[freq], file_path=new_file_path, header=header, num_col=5)
 		else:
 			freq_dict = fill_nested_dict(ws, 2)
-
-			# формирование списка с данными о каждой трещине
-			# для трещины с конкретной глубиной, длиной и раскрытием
-			# сохраняются данные для нормировки и записи в файл в список RectCracks
 			for freq in freq_dict:
 				for deep in freq_dict[freq]:
 					crack_data = ThisCracks(crack_type, crack_len, crack_w, deep, freq)
@@ -366,6 +368,7 @@ def main():
 						row[4] = (z * norm).real
 						row[3] = (z * norm).imag
 						row[5] = abs(z * norm)
+
 					ampl = lambda data: float(data[5])
 					freq_dict[freq][deep].sort(key=ampl, reverse=False)
 					z = complex(freq_dict[freq][deep][0][4], freq_dict[freq][deep][0][3])
@@ -378,23 +381,23 @@ def main():
 					freq_dict[freq][deep].sort(key=def_disp, reverse=False)
 					crack_data.data = freq_dict[freq][deep]
 					RectCracks.append(crack_data)
+
 					#записать RectCracks в файлы
 					exname = crack_type + '_'+str(int(crack_len))+'_' + str(float(crack_w))+'_'+str(int(float(deep)*100))+'deep'+'_'+ str(int(freq)) + 'kHz_norm.xlsx'
 					new_file_path = join(rectnormdir, exname)
 					if not os.path.exists(new_file_path):
 						save_cracks(dict=freq_dict[freq][deep], file_path=new_file_path, header=header, num_col=6)
 
-	#print('******\n')
-		#объединение для  Calibrsate_Curve для трещины c конкретными параметрами len, w на каждой частоте
+	#объединение для  Calibrsate_Curve для трещины c конкретными параметрами len, w на каждой частоте
 	for cc in Calibrate_Curve:
 		for rc in RectCracks:
 			if cc.freq == rc.freq:
-				tup = tuple((rc.len,rc.w))
-				if (tup not in cc.cracks):
+				tup = tuple((rc.len, rc.w))
+				if tup not in cc.cracks:
 					cc.cracks[tup] = {}
-				if(rc.deep not in cc.cracks[tup]):
+				if rc.deep not in cc.cracks[tup]:
 					cc.cracks[tup][rc.deep] = rc.phase
-		#print(f'freq ={cc.freq}, cracks = {cc.cracks}')
+		print(f'freq ={cc.freq}, cracks = {cc.cracks}')
 
 	#print('******\n')
 	for cc in Calibrate_Curve:
@@ -404,25 +407,33 @@ def main():
 			for deep in cc.cracks[crack]:
 				if deep not in cc.dphase_cracks[crack]:
 					cc.dphase_cracks[crack][deep] = cc.cracks[crack][deep] - cc.phase
+	print('\n')
+	for cc in Calibrate_Curve:
+		print(f'freq = {cc.freq}, clbr_phase = {cc.clbr_phase}')
 
-		#print(f'freq ={cc.freq}, dphasecracks = {cc.dphase_cracks}')
 	print('Marina very clever!\n')
-'''	import plotly.graph_objects as go
+	import plotly.graph_objects as go
 
 	fig = go.Figure()
+	deep= []
+	deg = []
+	# сортировка словаря по значению:
 
-	fig.add_trace(go.Scatter(
-		x=[0, 1, 2, 3, 4, 5, 6, 7, 8],
-		y=[8, 7, 6, 5, 4, 3, 2, 1, 0]
-	))
+	sorted_by_value = sorted(Calibrate_Curve[1].clbr_phase.items(), key=lambda kv: kv[1],  reverse=False)
+	print(sorted_by_value)
+	for i in sorted_by_value:
+		deep.append(i[0])
+		deg.append(i[1])
 
-	fig.add_trace(go.Scatter(
+	fig.add_trace(go.Scatter(x=deg, y = deep))
+
+	'''fig.add_trace(go.Scatter(
 		x=[0, 1, 2, 3, 4, 5, 6, 7, 8],
 		y=[0, 1, 2, 3, 4, 5, 6, 7, 8]
-	))
+	))'''
 
 	fig.update_layout(xaxis_type="log", yaxis_type="log")
-	fig.show()'''
+	fig.show()
 
 
 
